@@ -1,0 +1,47 @@
+<html>
+  <head>
+    <title>Meribilty</title>
+  </head>
+  <style>
+    body {
+      color: #000;
+      font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+      font-size: 24px;
+      line-height: 24px;
+    }
+  </style>
+
+  <body>
+    <!-- <h4>Meribilty Insurance For Order#<%= orderNo %></h4> -->
+    <h4>Meribilty Insurance</h4>
+    <!-- <h6>
+      View Invoice :
+      <a href="<%= currentUploadingDocsUrl %>">
+        Click here to view invoice...</a
+      >
+    </h6> -->
+    <h5>
+      Download Order Details :
+      <a href="<%= currentUploadingDocsUrl %>">
+        Click here to download order details...</a
+      >
+    </h5>
+    <!-- <h6>Invoice No : <%=InvoiceNo %></h6> -->
+    <p style="font-size: 0.8rem"><b>Order No</b>: <%=orderNo %></p>
+    <p style="font-size: 0.8rem">
+      <b>Order Created Date</b>: <%=InvoiceDate %>
+    </p>
+    <p style="font-size: 0.8rem"><b>Consignee Name</b>: <%=ConsigneeName %></p>
+    <p style="font-size: 0.8rem">
+      <b>Cargo Value</b>: <%=Original_cargo_value %> PKR
+    </p>
+    <p style="font-size: 0.8rem">
+      <b>Cargo Insurance Premium Amount</b>: <%=Cargo_value %> PKR
+    </p>
+    <p style="font-size: 0.8rem"><b>Port Of Origin</b>: <%=PortofOrigin %></p>
+    <p style="font-size: 0.8rem">
+      <b>Final Destination</b>: <%=FinalDestination %>
+    </p>
+    <p style="font-size: 0.8rem"><b>Cargo Weight</b>: <%=grossWeight %> Tons</p>
+  </body>
+</html>
