@@ -42,7 +42,7 @@ app.get('/', (req, res) => {
 app.use('/auth', require('./api/auth/auth'))
 
 // Classes
-app.use('/classes',require('./classes/classes'))
+app.use('/classes',require('./api/classes/classes'))
 
 
 app.use(middlewares.notFound);

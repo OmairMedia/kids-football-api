@@ -1,9 +1,11 @@
 // *******  LIBRARIES
 const express = require("express");
+const admin = require('firebase-admin');
 const { body, validationResult } = require("express-validator");
 const moment = require("moment");
 const {
   usersRef,
+  adminRef
 } = require("../../db/ref");
 
 
@@ -41,10 +43,9 @@ router.get('/test', (req,res) => {
 //     "email": "fahad@4slash.com",
 //     "phone": "+923243288887",
 //     "password": "fahad123",
-//     "pro": false
 // }
 router.post(
-  "/send_register_otp",
+  "/register",
   body("fullname")
     .isLength({ max: 20 })
     .withMessage("Fullname must be less than 20 characters"),
@@ -53,7 +54,6 @@ router.post(
     function isValidPhonenumber(value) {
       return /^\d{7,}$/.test(value.replace(/[\s()+\-\.]|ext/gi, ""));
     }
-
     if (isValidPhonenumber(value)) {
       return Promise.resolve();
     } else {
@@ -63,7 +63,6 @@ router.post(
   body("password")
     .isLength({ min: 6 })
     .withMessage("Password Must Be 6 Characters at least!"),
-  body("pro").isBoolean().withMessage("Pro Should be boolean!"),
   // Validator
   (req, res, next) => {
     const errors = validationResult(req);
@@ -73,132 +72,165 @@ router.post(
       next();
     }
   },
+  // Check User
   (req, res, next) => {
-    const params = req.body;
-
-    console.log(params);
-
-    //  Check If User Exists !
-
-    if (params.pro) {
-      userRef
-        .child("pro")
-        .child(params.phone)
-        .get()
-        .then((snapshot) => {
-          if (snapshot.exists()) {
+    const body = req.body;
+    
+    try {
+      usersRef.orderByChild('email').equalTo(body.email).once('value', (snapshot) => {
+        if(snapshot.val()) {
+           const users = [];
+           snapshot.forEach((x)=>{
+            users.push({
+              ...x.val(),
+              id: x.key
+            })
+           });
+           
+           if(users.length > 0) {
             res.json({
-              status: false,
-              message: "User already Exists With The Given Phone Number",
-            });
-          } else {
-            // Bcrypt The Password Here ....
-            const salt = bcrypt.genSaltSync(saltRounds);
-            const hash = bcrypt.hashSync(params.password, salt);
-
-            const data = {
-              user: {
-                email: params.email,
-                password: hash,
-                fullname: params.fullname,
-                phone: params.phone,
-                type: "user",
-                user_type: "user",
-                form: params.pro ? "pro" : "user",
-                verified: false,
-                application_status: false,
-              },
-              created: getCurrentDate(),
-              created_timestamp: getCurrentTimestamp(),
-              to: params.phone,
-              status: "queued",
-              retry: 0,
-            };
-
-            req.body.userData = data;
+              status:false,
+              error: 'Account already exists on this email!'
+            }) 
+           } else {
             next();
-          }
-        })
-        .catch((err) => {
+           }
+        } else {
+          next()
+        }
+      })
+    } catch (err) {
+      res.json({
+        status:false,
+        error: err
+      }) 
+    }
+  },
+  // Save User
+  (req,res,next) => {
+    const body = req.body;
+
+    const newUser = usersRef.push();
+
+    const salt = bcrypt.genSaltSync(saltRounds);
+    const hash = bcrypt.hashSync(body.password, salt);
+
+    let data = {
+      id: newUser.key,
+      fullname: body.fullname,
+      email: body.email,
+      phone: body.phone,
+      photoURL: "",
+      password: hash,
+      createdAt: moment().valueOf(),
+      updatedAt: moment().valueOf()
+    }
+
+    newUser.set(data).then(()=>{
+      res.json({
+        status:true,
+        message: 'Account created successfully!',
+        user: data
+      })
+    }).catch((err)=>{
+      res.json({
+        status:false,
+        error:err
+      })
+    })
+  }
+);
+
+
+// Login
+router.post(
+  "/login",
+  body("email").isEmail().withMessage("Invalid Email!"),
+  body("password")
+    .isLength({ min: 6 })
+    .withMessage("Password Must Be 6 Characters at least!"),
+  // Validator
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    } else {
+      next();
+    }
+  },
+  // Check User
+  (req, res, next) => {
+    const body = req.body;
+    
+    try {
+      usersRef.orderByChild('email').equalTo(body.email).once('value', (snapshot) => {
+        if(snapshot.val()) {
+           const users = [];
+           snapshot.forEach((x)=>{
+            users.push({
+              ...x.val(),
+              id: x.key
+            })
+           });
+           
+           if(users.length > 0) {
+            req.body.user = users[0];
+            next()
+           } else {
+            res.json({
+              status:false,
+              error: 'Invalid Email!'
+            })
+           }
+        } else {
           res.json({
-            status: false,
-            error: err.message,
+            status:false,
+            error: 'Invalid Email!'
+          })
+        }
+      })
+    } catch (err) {
+      res.json({
+        status:false,
+        error: err
+      }) 
+    }
+  },
+  // Check Password
+  (req,res,next) => {
+    const body = req.body;
+   
+    const compare = bcrypt.compareSync(body.password, body.user.password);
+    
+    // console.log('body.user.password -> ',body.user.password);
+    // console.log('body.password -> ',body.password);
+    // console.log('compare -> ',compare)
+    
+    if(compare) {
+      //  Password Match Success
+      const additionalClaims = {
+        fullname:body.user.fullname,
+        email: body.user.email,
+        photoURL: body.user.photoURL,
+        phone: body.user.phone,
+        user_type: "user"
+      };
+
+      admin
+        .auth()
+        .createCustomToken(body.user.id, additionalClaims)
+        .then((customToken) => {
+          res.json({
+            status: true,
+            token: customToken,
+            user: body.user,
           });
         });
     } else {
-      userRef
-        .child("users")
-        .child(params.phone)
-        .get()
-        .then((snapshot) => {
-          if (snapshot.exists()) {
-            res.json({
-              status: false,
-              message: "User Already Exists On This Phone Number !",
-            });
-          } else {
-            const data = {
-              user: {
-                ...params,
-                user_type: "user",
-                type: "user",
-                verified: false,
-                form: params.pro ? "pro" : "user",
-              },
-              created: getCurrentDate(),
-              created_timestamp: getCurrentTimestamp(),
-              to: params.phone,
-              status: "queued",
-              retry: 0,
-            };
-
-            req.body.userData = data;
-            next();
-          }
-        })
-        .catch((error) => {
-          res.json({
-            status: false,
-            error: error.message,
-          });
-        });
-    }
-  },
-  // Send SMS
-  async (req, res, next) => {
-    const params = req.body;
-    const code = Math.floor(Math.random() * 9000) + 1000;
-    let filterphone = params.phone;
-    let transformphone = filterphone.substr(1);
-    console.log("filterphone -> ", filterphone);
-    console.log("transformphone -> ", transformphone);
-
-    try {
-      let content = `Welcome To Meribilty, Your User Registration OTP Code is ${code}`;
-
-      // let response = await axios.post(
-      //   `http://bsms.its.com.pk/api.php?key=b23838b9978affdf2aab3582e35278c6&sender=Meribilty&receiver=${transformphone}&msgdata=${content}`
-      // );
-
-      // success
-      const addsms = registrationOTPRef.child(code);
-      addsms
-        .set({
-          ...params.userData,
-          code: code,
-        })
-        .then(() =>
-          res.json({
-            status: true,
-            otp: code,
-          })
-        )
-        .catch((err) => console.log(err.message));
-    } catch (error) {
       res.json({
-        status: false,
-        err: error,
-      });
+        status:false,
+        error: 'Incorrect Password!'
+      })
     }
   }
 );
@@ -432,5 +464,121 @@ router.post(
       });
   }
 );
+
+
+// Create Admin
+router.post('/create-admin', 
+(req,res) => {
+   try {
+    const body = req.body;
+
+   const newAdmin = adminRef.push();
+
+   const salt = bcrypt.genSaltSync(saltRounds);
+   const hash = bcrypt.hashSync(body.password, salt);
+
+   newAdmin.set({
+     fullname: body.fullname,
+     email: body.email,
+     password: hash,
+     createdAt: moment().valueOf(),
+     updatedAt: moment().valueOf(),
+     photoURL: "",
+   }).then(()=>{
+      res.json({
+        status:true,
+        message: 'Admin created!'
+      })
+   }).catch((err)=>{
+    res.json({
+      status:false,
+      error: err
+    })
+   })
+   } catch (err) {
+    res.json({
+      status:false,
+      error: err
+    })
+   }
+}
+)
+
+
+// Admin Login
+router.post('/authenticate-admin',
+//  Get Data
+(req,res,next) => {
+  try {
+    const body = req.body;
+
+    adminRef.once('value', (snapshot) => {
+      let users = [];
+      snapshot.forEach((x)=>{
+        users.push({
+          ...x.val(),
+          id: x.key
+        });
+      });
+      req.body.users = users;
+      next()
+    })
+  } catch (err) {
+    res.json({
+      status:false,
+      error:err
+    })
+  }
+},
+// Match User
+(req,res,next)=>{
+  const body = req.body;
+
+  let users = body.users;
+  
+  // Match Email
+  const checkemail = users.filter(x => x.email === body.email);
+
+  if(checkemail && checkemail.length > 0) {
+    let givenPassword = body.password;
+    let hash = checkemail[0].password;
+    const salt = bcrypt.genSaltSync(saltRounds);
+    const compare = bcrypt.compareSync(givenPassword,hash);
+
+    if(compare) {
+      //  Password Match Success
+      const additionalClaims = {
+        fullname: checkemail[0].fullname,
+        email: checkemail[0].email,
+        photoURL: checkemail[0].photoURL,
+        user_type: "admin",
+      };
+
+      admin
+        .auth()
+        .createCustomToken(checkemail[0].id, additionalClaims)
+        .then((customToken) => {
+          res.json({
+            status: true,
+            token: customToken,
+            user: checkemail[0],
+          });
+        });
+    } else {
+      // Password Match Failed
+      res.json({
+        status:false,
+        error: "Invalid Password!"
+      })
+    }
+  } else {
+    // Email Dont Match
+    res.json({
+      status:false,
+      error: "Invalid Email!"
+    })
+  }
+}
+)
 
 module.exports = router;
