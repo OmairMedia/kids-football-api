@@ -8,7 +8,7 @@ const fileUpload = require('express-fileupload');
 require('dotenv').config();
 
 // Initializing Firebase Admin SDK
-const serviceAccount = require('./serviceAccount.json');
+const serviceAccount = require('/app/src/serviceAccount.json');
 
 const admin = firebase_admin.initializeApp({
   credential: firebase_admin.credential.cert(serviceAccount),
